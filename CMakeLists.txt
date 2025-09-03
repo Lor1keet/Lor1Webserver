@@ -20,7 +20,6 @@ if(NOT MYSQL_INCLUDE_DIR OR NOT MYSQL_LIB)
     message(FATAL_ERROR "MySQL development files not found! Install libmysqlclient-dev.")
 endif()
 
-# 3. 项目源文件和头文件
 include_directories(
     ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/http
