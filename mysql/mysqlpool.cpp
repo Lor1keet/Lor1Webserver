@@ -38,8 +38,8 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 			exit(1);
 		}
 
-		con = mysql_real_connect(con, url.c_str(), User.c_str(), PassWord.c_str(), DBName.c_str(), Port, NULL, 0);
-		if (con == NULL) {
+		MYSQL *conn_result = mysql_real_connect(con, url.c_str(), User.c_str(), PassWord.c_str(), DBName.c_str(), Port, NULL, 0);
+		if (conn_result == NULL) {
 			spdlog::error("mysql_real_connect failed: {}", mysql_error(con));
 			exit(1);
 		}
