@@ -400,22 +400,20 @@ void http_conn::unmap() {
 }
 
 // 格式化添加响应内容
-bool http_conn::add_response(const char* format, ...) {
-    va_list arg_list;
-    va_start(arg_list, format);
+template<typename... Args>
+bool http_conn::add_response(const char* format, Args&&... args) {
 
     char temp[4096];
-    int len = vsnprintf(temp, sizeof(temp), format, arg_list);
+    int len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
+
     if (len < 0) {
-        va_end(arg_list);
-        spdlog::error("vsnprintf failed (response formatting)");
+        spdlog::error("snprintf failed (response formatting)");
         return false;
     }
 
     write_buf.append(temp, len);
     write_idx = write_buf.size();
 
-    va_end(arg_list);
     spdlog::debug("Added response content: [{}]", temp);
     return true;
 }
@@ -437,7 +435,6 @@ bool http_conn::add_headers(int content_len) {
 bool http_conn::add_content_length(int content_len) {
     return add_response("Content-Length: %d\r\n", content_len);
 }
-
 
 std::string http_conn::get_file_extension() {
     size_t dot_pos = requested_file_path.find_last_of('.');
@@ -522,7 +519,8 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 if (!add_content(empty_html)) return false;
             }
             break;
-
+        
+        // 重定向
         case HTTP_CODE::REDIRECT:
             write_buf.clear();
             add_status_line(302, "Found");
