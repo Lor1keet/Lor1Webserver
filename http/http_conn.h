@@ -132,7 +132,7 @@ private:
     LINE_STATUS parse_line();
 
     template<typename... Args>
-    bool http_conn::add_response(const char* format, Args&&... args);
+    bool add_response(const char* format, Args&&... args);
     bool add_content(const std::string& content);
     bool add_status_line(int status, const std::string& title);
     bool add_headers(int content_length);
