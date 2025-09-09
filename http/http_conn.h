@@ -134,7 +134,13 @@ private:
     template<typename... Args>
     bool add_response(const char* format, Args&&... args) {
         char temp[4096];
-        int len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
+        int len = 0;
+        if constexpr (sizeof...(Args) == 0) {
+            len = snprintf(temp, sizeof(temp), "%s", format);
+        } 
+        else {
+            len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
+        }
 
         if (len < 0) {
             spdlog::error("snprintf failed (response formatting)");
