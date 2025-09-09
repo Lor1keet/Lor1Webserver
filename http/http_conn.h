@@ -132,7 +132,7 @@ private:
     LINE_STATUS parse_line();
 
     template<typename... Args>
-    bool http_conn::add_response(const char* format, Args&&... args) {
+    bool add_response(const char* format, Args&&... args) {
         char temp[4096];
         int len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
 
