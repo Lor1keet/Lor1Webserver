@@ -43,8 +43,8 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 			spdlog::error("mysql_real_connect failed: {}", mysql_error(con));
 			exit(1);
 		}
-			connList.emplace_back(std::move(con), mysql_deleter);
-			++m_FreeConn;
+		connList.emplace_back(std::move(con), mysql_deleter);
+		++m_FreeConn;
 	}
 
 	m_MaxConn = m_FreeConn;
