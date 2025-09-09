@@ -132,7 +132,21 @@ private:
     LINE_STATUS parse_line();
 
     template<typename... Args>
-    bool add_response(const char* format, Args&&... args);
+    bool http_conn::add_response(const char* format, Args&&... args) {
+        char temp[4096];
+        int len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
+
+        if (len < 0) {
+            spdlog::error("snprintf failed (response formatting)");
+            return false;
+        }
+
+        write_buf.append(temp, len);
+        write_idx = write_buf.size();
+
+        spdlog::debug("Added response content: [{}]", temp);
+        return true;
+    }
     bool add_content(const std::string& content);
     bool add_status_line(int status, const std::string& title);
     bool add_headers(int content_length);

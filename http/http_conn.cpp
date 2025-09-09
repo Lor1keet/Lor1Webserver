@@ -399,25 +399,6 @@ void http_conn::unmap() {
     }
 }
 
-// 格式化添加响应内容
-template<typename... Args>
-bool http_conn::add_response(const char* format, Args&&... args) {
-
-    char temp[4096];
-    int len = snprintf(temp, sizeof(temp), format, std::forward<Args>(args)...);
-
-    if (len < 0) {
-        spdlog::error("snprintf failed (response formatting)");
-        return false;
-    }
-
-    write_buf.append(temp, len);
-    write_idx = write_buf.size();
-
-    spdlog::debug("Added response content: [{}]", temp);
-    return true;
-}
-
 // 添加响应状态行（HTTP/1.1 200 OK）
 bool http_conn::add_status_line(int status, const std::string& title) {
     return add_response("HTTP/1.1 %d %s\r\n", status, title.c_str());
