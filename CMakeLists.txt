@@ -35,6 +35,7 @@ set(SRC_FILES
     http/http_conn.cpp
     server/webserver.cpp
     mysql/mysqlpool.cpp
+    http/user_service_main.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
