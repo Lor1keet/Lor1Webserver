@@ -158,11 +158,8 @@
     });
 
   </script>
-</body>
-</html>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('error') === '1') {
         alert('登录失败：用户名或密码错误，请重新输入！');
@@ -176,5 +173,8 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('注册失败：用户已存在');
         history.replaceState({}, document.title, window.location.pathname);
     }
-});
+    });
 </script>
+</body>
+</html>
+
