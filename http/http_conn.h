@@ -1,25 +1,14 @@
 #ifndef HTTPCONNECTION_H
 #define HTTPCONNECTION_H
 
-#include <unistd.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
-#include <sys/uio.h>
-#include <memory>
 #include <string>
-#include <vector>
-#include <map>
-#include <mutex>
-#include <cstring>
-#include <mysql/mysql.h>
+#include <unordered_map>
 #include <asio.hpp>
+#include <spdlog/spdlog.h>
+using asio::ip::tcp;
 
-#include "spdlog/spdlog.h"
-#include "../mysql/mysqlpool.h"
+class Router;
 
 // HTTP请求方法
 enum class METHOD {
@@ -33,7 +22,7 @@ enum class CHECK_STATE {
     CHECK_STATE_CONTENT       // 解析请求体
 };
 
-enum HTTP_CODE {
+enum class HTTP_CODE {
     NO_REQUEST,           // 未完成解析
     GET_REQUEST,          // 解析完成
     BAD_REQUEST,          // 错误请求
@@ -53,18 +42,18 @@ enum class LINE_STATUS {
 
 class http_conn {
 public:
-    // 常量定义
     static constexpr int FILENAME_LEN = 200;      // 文件名最大长度
     static constexpr int READ_BUFFER_SIZE = 2048;  // 读缓冲区大小
     static constexpr int WRITE_BUFFER_SIZE = 1024; // 写缓冲区大小
 
 public:
     http_conn() = default;
+    http_conn(tcp::socket* socket_, const tcp::endpoint& endpoint, const std::string& root): socket(socket_), m_endpoint(endpoint), doc_root(root) {};
+
     ~http_conn() = default;
 
 public:
-    void init(int sockfd, const sockaddr_in& addr, const std::string& root,               
-              const std::string& user, const std::string& passwd, const std::string& sqlname);
+    void init(tcp::socket* socket_, const tcp::endpoint& endpoint, const std::string& root);
     
     void init();
 
@@ -74,13 +63,7 @@ public:
     
     bool process_write(HTTP_CODE ret);
     
-    bool read_once();
-    
-    bool write();
-    
-    const sockaddr_in* get_address() { return &m_address; }
-    
-    void initmysql_result(connection_pool* connPool);
+    const tcp::endpoint* get_endpoint() const { return &m_endpoint; }  
     
     void unmap();
 
@@ -109,9 +92,18 @@ public:
 
     int timer_flag;
 
+    const std::string& get_url() const { return url;}
+
+    bool is_cgi() const {return cgi;}
+
+    const std::string& get_request_content() const { return request_content; }
+
+    void set_requested_file(const std::string& path) { requested_file_path = path; }
+
+    void set_url(const std::string& new_url) { url = new_url;}
+
 public:
     static int m_user_count;    // 在线用户数
-    MYSQL* mysql;               // MySQL连接
 
 private:
     // 解析请求行
@@ -153,6 +145,7 @@ private:
         spdlog::debug("Added response content: [{}]", temp);
         return true;
     }
+
     bool add_content(const std::string& content);
     bool add_status_line(int status, const std::string& title);
     bool add_headers(int content_length);
@@ -164,8 +157,8 @@ private:
 
 
 private:
-    int m_sockfd = -1;                  // 客户端socket
-    sockaddr_in m_address;              // 客户端地址
+    tcp::socket* socket;                // 客户端socket
+    tcp::endpoint m_endpoint;           // 客户端地址
     std::string read_buf;               // 读缓冲区
     std::string write_buf;              // 写缓冲区
     std::string real_file;              // 实际请求的文件路径
@@ -200,18 +193,8 @@ private:
     int trig_mode = 0;                  // 触发模式
     bool close_log = false;             // 是否关闭日志
 
-    // 数据库信息
-    std::string sql_user;               // 数据库用户名
-    std::string sql_passwd;             // 数据库密码
-    std::string sql_name;               // 数据库名
-    std::string sql_string;             // SQL查询字符串
-
     static std::mutex mtx;              // 线程安全锁（用户表操作）
-    std::map<std::string, std::string> users;  // 用户名-密码映射表
     static std::unordered_map<std::string, std::string> file_types;
 };
-
-
-
 
 #endif

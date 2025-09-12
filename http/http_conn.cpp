@@ -1,10 +1,6 @@
 #include "http_conn.h"
-#include <mysql/mysql.h>
-#include <fstream>
-#include <ostream>
-#include <fcntl.h>
-#include <string.h>
-#include <errno.h>
+#include "spdlog/spdlog.h"
+#include "router.h" 
 
 const char* ok_200_title = "OK";
 const char* error_400_title = "Bad Request";
@@ -40,44 +36,26 @@ std::string trim(const std::string& s) {
     return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
 }
 
-// 初始化MySQL查询结果：从连接池加载用户账号密码到内存（users映射表）
-void http_conn::initmysql_result(connection_pool* connPool) {
-    connPtr mysql_conn = connPool->GetConnection();
-    MYSQL* mysql = mysql_conn.get();
 
-    if (mysql_query(mysql, "SELECT username,passwd FROM user")) {
-        spdlog::error("MySQL SELECT error: {}", mysql_error(mysql));
-        return;
-    }
-
-    // 提取查询结果，存入users映射表
-    MYSQL_RES* result = mysql_store_result(mysql);
-    while (MYSQL_ROW row = mysql_fetch_row(result)) {
-        std::string username(row[0]);
-        std::string passwd(row[1]);
-        users[username] = passwd;
-    }
-}
-
+// http_conn.cpp
 void http_conn::close_conn(bool real_close) {
-    if (real_close && m_sockfd != -1) {
-        spdlog::info("Close client socket: {}", m_sockfd);
-        m_sockfd = -1;
-        m_user_count--; // 在线用户数减1
+    if (real_close && socket != nullptr) {
+        spdlog::info("Close client socket");
+        std::error_code ec;
+        socket->close(ec);
+        if (ec) {
+            spdlog::error("Socket close error: {}", ec.message());
+        }
+        socket = nullptr;
+        m_user_count--;
     }
 }
 
-void http_conn::init(int sockfd, const sockaddr_in& addr, const std::string& root, 
-                     const std::string& user, const std::string& passwd, const std::string& sqlname) {
-    m_sockfd = sockfd;
-    m_address = addr;
+void http_conn::init(tcp::socket* socket_, const asio::ip::tcp::endpoint& endpoint, const std::string& root) {
+    socket = socket_;
+    m_endpoint = endpoint;
     m_user_count++;
-
     doc_root = root;
-    sql_user = user;
-    sql_passwd = passwd;
-    sql_name = sqlname;
-
     init(); 
 }
 
@@ -166,26 +144,15 @@ HTTP_CODE http_conn::parse_request_line(const std::string& text) {
     }
     url = text.substr(url_start, url_end - url_start);
 
-    requested_file_path = url; 
     // 处理URL中的http/https前缀
-    if (requested_file_path.substr(0, 7) == "http://") {
-        requested_file_path = requested_file_path.substr(7);
-        size_t slash_pos = requested_file_path.find('/');
-        requested_file_path = (slash_pos != std::string::npos) ? requested_file_path.substr(slash_pos) : "/";
-    } else if (requested_file_path.substr(0, 8) == "https://") {
-        requested_file_path = requested_file_path.substr(8);
-        size_t slash_pos = requested_file_path.find('/');
-        requested_file_path = (slash_pos != std::string::npos) ? requested_file_path.substr(slash_pos) : "/";
-    }
-
-    // 重定向逻辑
-    if (size_t query_pos = url.find("?") != std::string::npos){
-        requested_file_path = url.substr(0, query_pos); 
-    }
-
-    // 根路径映射到main.html
-    if (requested_file_path == "/") {
-        requested_file_path += "main.html";
+    if (url.substr(0, 7) == "http://") {
+        url = url.substr(7);
+        size_t slash_pos = url.find('/');
+        url = (slash_pos != std::string::npos) ? url.substr(slash_pos) : "/";
+    } else if (url.substr(0, 8) == "https://") {
+        url = url.substr(8);
+        size_t slash_pos = url.find('/');
+        url = (slash_pos != std::string::npos) ? url.substr(slash_pos) : "/";
     }
 
     spdlog::info("Parsed URL: [{}]", url);
@@ -273,8 +240,16 @@ HTTP_CODE http_conn::process_read() {
                 if (ret == HTTP_CODE::BAD_REQUEST) return ret;
                 // 无请求体时，直接进入请求处理
                 else if (ret == HTTP_CODE::GET_REQUEST) {
+                    Router router;
+                    UserServiceMain user_service;
                     spdlog::info("No request content, start processing request");
-                    return do_request();
+                    HTTP_CODE route_ret = router.dispatch(*this, user_service);
+                    if (route_ret == HTTP_CODE::FILE_REQUEST){
+                        return do_request();
+                    }
+                    else{
+                        return route_ret;
+                    }
                 }
                 break;
             default:
@@ -285,77 +260,33 @@ HTTP_CODE http_conn::process_read() {
     // 解析POST发送的请求体
     if (check_state == CHECK_STATE::CHECK_STATE_CONTENT) {
         if (read_buf.size() >= checked_idx + content_length) {
-            sql_string = read_buf.substr(checked_idx, content_length);
-            spdlog::info("Successfully read request content: [{}]", sql_string);
-            return do_request(); // 进入业务处理
+            request_content = read_buf.substr(checked_idx, content_length);
+            spdlog::info("Successfully read request content: [{}]", request_content);
+            Router router;
+            UserServiceMain user_service;
+            HTTP_CODE route_ret = router.dispatch(*this, user_service);
+            if (route_ret == HTTP_CODE::FILE_REQUEST){
+                return do_request();
+            }
+            else{
+                return route_ret;
+            }
         } else {
             spdlog::info("Insufficient request content, wait for more data");
             return HTTP_CODE::NO_REQUEST;
         }
     }
-
     return HTTP_CODE::NO_REQUEST;
 }
 
 // 业务处理
 HTTP_CODE http_conn::do_request() {
     real_file = doc_root;
-    
-    // size_t pos = url.find_last_of("/");
-
-    if (cgi && (url.find("welcome")) != std::string::npos){
-        // user=xxx&password=xxx&op=xxx
-        size_t user_pos = sql_string.find("user=");
-        size_t passwd_pos = sql_string.find("password=");
-        size_t op_pos = sql_string.find("op=");
-        if (user_pos == std::string::npos || passwd_pos == std::string::npos) {
-            return BAD_REQUEST;
-        }
-        
-        std::string username = sql_string.substr(user_pos + 5, passwd_pos - (user_pos + 6));
-        std::string passwd = sql_string.substr(passwd_pos + 9, op_pos - (passwd_pos + 10));
-        std::string op = sql_string.substr(op_pos + 3);
-        spdlog::info("CGI request - Username: [{}], Password: [***], [{}]", username, op);
-
-        if (op == "login"){
-            std::lock_guard<std::mutex> lock(mtx);
-            if (users.find(username) != users.end() && users[username] == passwd) {
-                requested_file_path = "/welcome.jpg";
-            }
-            else {
-                url = "/?error=1";
-                return REDIRECT;
-            }
-        }
-
-        else if (op == "register"){
-            std::lock_guard<std::mutex> lock(mtx);
-            if (users.find(username) == users.end()) {
-                char sql_insert[200];
-                snprintf(sql_insert, sizeof(sql_insert), 
-                         "INSERT INTO user(username, passwd) VALUES('%s', '%s')",
-                         username.c_str(), passwd.c_str()); 
-                if (mysql_query(mysql, sql_insert) == 0) {
-                    users[username] = passwd; // 同步内存映射表
-                    url = "/?registerok=1"; 
-                    spdlog::info("User registered successfully: [{}]", username);
-                    return REDIRECT;
-                } else {
-                    url = "/?error=1";
-                    return REDIRECT;
-                }
-            }
-            else {
-                url = "/?user_exists=1";
-                return REDIRECT;
-            }
-        }
-
-    }
 
     if (real_file.size() + requested_file_path.size() >= FILENAME_LEN) {
         return HTTP_CODE::BAD_REQUEST;
     }
+
     real_file += requested_file_path;
     
     // 检查文件状态（是否存在、是否可读、是否为目录）
