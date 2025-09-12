@@ -9,8 +9,8 @@ const std::string IP = "127.0.0.1";
 const std::string PORT = "8080";                            
 const std::string WEB_ROOT = "../root";   // 根路径
 const std::string DB_USER = "root";      // 数据库账户名
-const std::string DB_PASS = "passwd";    // 数据库密码
-const std::string DB_NAME = "dbname";  // 使用的数据库名
+const std::string DB_PASS = "123456";    // 数据库密码
+const std::string DB_NAME = "test";  // 使用的数据库名
 const int MAX_DB_CONN = 10;             
 
 int main() {
@@ -24,7 +24,7 @@ int main() {
 
         asio::io_context io_context;
 
-        WebServer server(io_context, db_pool, THREAD_NUM, WEB_ROOT, DB_USER, DB_PASS, DB_NAME);
+        WebServer server(io_context, THREAD_NUM, WEB_ROOT);
         spdlog::info("Server started on port {}", PORT);
         spdlog::info("Web root: {}", WEB_ROOT);
 
