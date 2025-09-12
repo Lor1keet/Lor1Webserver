@@ -1,23 +1,15 @@
-#include <asio.hpp>
-#include <memory>
-#include <vector>
 #include <thread>
-#include "http_conn.h"
 #include "webserver.h"
 #include "spdlog/spdlog.h"
 
-
 using asio::ip::tcp;
 
-WebServer::WebServer(asio::io_context& io_context, connection_pool* conn_pool, int thread_num,
-                     const std::string& root, const std::string& user,
-                     const std::string& passwd, const std::string& dbname)
+WebServer::WebServer(asio::io_context& io_context, int thread_num, const std::string& root)
     : io_context_(io_context),
-      acceptor_(io_context_),
-      conn_pool_(conn_pool),
+      acceptor_(io_context_),      
       thread_num_(thread_num),
       signals_(io_context, SIGINT, SIGTERM),
-      root_(root), user_(user), passwd_(passwd), dbname_(dbname) {
+      root_(root){
     signals_.async_wait([this](std::error_code ec, int) {
         if (!ec) io_context_.stop();
     });
@@ -72,7 +64,7 @@ void WebServer::accept() {
     acceptor_.async_accept([this](std::error_code ec, tcp::socket socket) {
         if (!ec) {
             spdlog::info("New client connection");
-            std::make_shared<Connection>(std::move(socket), conn_pool_, root_, user_, passwd_, dbname_)->start();
+            std::make_shared<Connection>(std::move(socket), root_)->start();
         } else {
             spdlog::error("Accept connection failed: {}", ec.message());
         }
@@ -80,21 +72,12 @@ void WebServer::accept() {
     });
 }
 
-Connection::Connection(tcp::socket socket, connection_pool* conn_pool, 
-                       const std::string& root, const std::string& user, 
-                       const std::string& passwd, const std::string& dbname)
-    : socket_(std::move(socket)), conn_pool_(conn_pool),
-      timer_(socket_.get_executor()),
-      http_(), m_root(root), m_user(user), 
-      m_passWord(passwd), m_databaseName(dbname) {}
+Connection::Connection(tcp::socket socket, const std::string& root)
+    : socket_(std::move(socket)), timer_(socket_.get_executor()), http_(nullptr, socket_.remote_endpoint(), root), m_root(root){}
 
 void Connection::start() {
     asio::ip::tcp::endpoint remote_ep = socket_.remote_endpoint();
-    http_.init(socket_.native_handle(), 
-              *reinterpret_cast<sockaddr_in*>(&remote_ep), 
-              m_root, m_user, m_passWord, m_databaseName);
-    
-    http_.initmysql_result(conn_pool_); 
+    http_.init(&socket_, remote_ep, m_root);
     reset_timer();  
     do_read(); 
 }
@@ -111,11 +94,9 @@ void Connection::do_read() {
             
             http_.append_read_data(buffer_, length);
             
-            connPtr mysql_conn = conn_pool_->GetConnection();
-            http_.mysql = mysql_conn.get();
             HTTP_CODE read_ret = http_.process_read();
             
-            if (read_ret == NO_REQUEST) {
+            if (read_ret == HTTP_CODE::NO_REQUEST) {
                 // 未完成请求解析，继续读取
                 do_read();
                 reset_timer();
