@@ -1,17 +1,13 @@
 #ifndef _CONNECTION_POOL_
 #define _CONNECTION_POOL_
 
-#include <stdio.h>
 #include <list>
 #include <mysql/mysql.h>
-#include <error.h>
-#include <string.h>
-#include <iostream>
 #include <string>
 #include <mutex>
 #include <condition_variable>
 #include <functional>
-
+#include "spdlog/spdlog.h"
 
 using namespace std;
 
