@@ -1,5 +1,5 @@
-#include "user_service.h"
-#include "../mysql/mysqlpool.h"
+#include "user_service.hpp"
+#include "../mysql/mysqlpool.hpp"
 #include "spdlog/spdlog.h"
 
 loginResult UserServiceMain::login(const loginRequest& req){
@@ -136,5 +136,4 @@ registerResult UserServiceMain::registerUser(const registerRequest& req){
 
     mysql_stmt_close(stmt);
     return res;
-
 }
