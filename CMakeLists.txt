@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(EpollWebServer LANGUAGES CXX)
+project(AsioWeb LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,9 +33,12 @@ include_directories(
 set(SRC_FILES
     main.cpp
     http/http_conn.cpp
+    http/http_parser.cpp
+    http/user_service_main.cpp
+    http/user_controller.cpp
+    http/http_responser.cpp
     server/webserver.cpp
     mysql/mysqlpool.cpp
-    http/user_service_main.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
