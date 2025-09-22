@@ -31,7 +31,6 @@ public:
         routes[path] = std::move(handler);
     }
 
-
     HTTP_CODE dispatch(HttpRequest& req, HttpResponse& res) {
         std::string url = req.get_url();
         size_t pos = url.find('?'); 
